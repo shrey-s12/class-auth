@@ -24,10 +24,10 @@ function authenticateToken(req, res, next) {
     }
 
     // After Verify it call a callback for checking error
-    jwt.verify(token, SECRET, function (err, userInfo) {
+    jwt.verify(token, SECRET, function (err, token_data) {
         if (err) return res.status(400).json({ message: "Forbidden", error: err });
 
-        req.user = userInfo;
+        req.user = token_data.user;
         next();
     });
 }

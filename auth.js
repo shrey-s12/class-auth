@@ -7,10 +7,12 @@ const jwt = require('jsonwebtoken')
 const app = express();
 const PORT = process.env.PORT2; // 5001
 const SECRET = process.env.ACCESS_TOKEN_SECRET;
+const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET;
 app.use(express.json());
 
 // db
 const users = [];
+const sessions = new Set();
 
 app.get("/admin", (req, res) => {
     res.send(users);
@@ -29,6 +31,20 @@ app.post("/register", async (req, res) => {
     }
 });
 
+app.post("/token", (req, res) => {
+    const refresh_token = req.body.token;
+    if (!refresh_token) return res.status(401).json({ message: "Unauthorized" });
+    if (!sessions.has(refresh_token)) return res.status(401).json({ message: "You need to login!" });
+
+    jwt.verify(refresh_token, REFRESH_SECRET, function (err, token_data) {
+        if (err) return res.status(403).json({ message: "Forbidden", error: err });
+
+        // {user: token_data.user} Remove "iat"(Time Stamp) from the data
+        const token = generateAccessToken({ user: token_data.user });
+        return res.json({ token });
+    })
+});
+
 app.post("/login", async (req, res) => {
     const { username, password } = req.body;
     const user = users.find(ele => ele.username === username);
@@ -45,14 +61,27 @@ app.post("/login", async (req, res) => {
     }
 
     const userInfo = { username: user.username };
-    const token = jwt.sign(userInfo, SECRET, { expiresIn: "30s" });
+    const token_data = { user: userInfo };
 
-    return res.json(token);
+    const refresh_token = jwt.sign(token_data, REFRESH_SECRET);
+    sessions.add(refresh_token);
+
+    const token = generateAccessToken(token_data);
+
+    return res.json({ token, refresh_token });
 });
 
 app.delete("/logout", (req, res) => {
-    res.json({ message: "User successfully logged out" })
+    const refresh_token = req.body.token;
+    if (!sessions.has(refresh_token)) return res.status(401).json({ message: "No op" });
+
+    sessions.delete(refresh_token);
+    return res.status(200).json({ message: "Logged Out" })
 });
+
+function generateAccessToken(data) {
+    return jwt.sign(data, SECRET, { expiresIn: "30s" });
+}
 
 app.listen(PORT, () => {
     console.log(`Server Auth running on port ${PORT}`);
